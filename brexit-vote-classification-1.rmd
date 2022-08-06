@@ -243,3 +243,26 @@ confusionMatrix(df_test_preped$LeaveVote, pred_test,
 ```
 
 
+### Reporting ROC
+
+- `twoClassSummary` provides ROC
+  - setting up the data to send to this function is quite tricky
+  - it needs 4 column data frame with the structure below
+- Calculating ROC requires methods that report the probability of class 
+
+```{r}
+calc_roc_logit <- function(fm, print_dat = F){
+  print(fm)
+  levels(df_test_preped$LeaveVote) <- c("class0", "class1")
+  mod <- glm(fm, data = df_train_preped, family = 'binomial')
+  prob1 <- predict(mod, newdata = df_test_preped, type = "response")
+  prob0 <- 1 - prob1
+  pred_test <- as.integer(prob1 > .5) %>% factor(labels = c("class0", "class1"))
+  dat <- data.frame(obs = df_test_preped$LeaveVote, pred = pred_test, "class1" = prob1, 
+                    'class0' = prob0)
+  if(print_dat) print(head(dat))
+  print(twoClassSummary(dat, lev = levels(pred_test)))
+}
+calc_roc_logit(fm_socdem, print_dat = T)
+  
+```
