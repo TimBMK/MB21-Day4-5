@@ -86,7 +86,7 @@ analyzeSentiment(tmp$text[1:10])
 ### `mcapply`
 
 ```{r}
-tictoc::tic()
+tictoc::tic() # tictoc gives time between tic() and toc()
 files %>% 
   head() %>%
   mclapply(function(x){
