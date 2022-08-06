@@ -32,8 +32,8 @@ We sub-sample the data. Full data takes too much time to estimate for the class.
 
 ```{r}
 set.seed(20200813)
-df_brexit <- read_csv("data/df_bes.csv.gz") %>%
-  sample_n(3000) # sampling data so
+df_brexit <- read_csv("data/data_bes.csv.gz") %>%
+  sample_n(3000) # sampling data so (sample_frac() for percentual sampling)
 ```
 
 
@@ -93,7 +93,7 @@ fm_attitudes <- formula("LeaveVote ~ gender + age + edlevel + hhincome + euUKNot
               lessEUmigrants + effectsEUTrade1 + effectsEUImmigrationLower")
 fm_all <- formula("LeaveVote ~ .")
 
-
+# formula objects are helpful for switching out formulas in models
 ```
 
 You can use these formulas in a way like:
@@ -111,7 +111,44 @@ model.matrix(fm_socdem, data = df_train_preped) %>% head()
 Run a few models, and evaluate them. Which one has the better predictive performance?
 
 ```{r}
+mod_socdem <- glm(fm_socdem, data = df_train_preped, family = "binomial")
 
+
+# pred_train <- as.integer(predict(mod_socdem, newdata = df_train_preped) > .5) %>% factor()
+# 
+# confusionMatrix(df_train_preped$LeaveVote, pred_train, mode = "everything")
+
+
+pred_test <- as.integer(predict(mod_socdem, newdata = df_test_preped) > .5) %>% factor()
+
+# confusionMatrix(df_test_preped$LeaveVote, pred_test, mode = "prec_recall") # precision & recall only
+
+confusionMatrix(df_test_preped$LeaveVote, pred_test, mode = "everything")
+
+
+logit_performance <- function(fm){
+  mod <- glm(fm, data = df_train_preped, family = "binomial")
+  pred_test <- as.integer(predict(mod, newdata = df_test_preped) > .5) %>% factor()
+  confusionMatrix(df_test_preped$LeaveVote, pred_test, 
+                  positive = "1",                     # change positive category to "voting for the referendum"
+                  mode = "everything") %>% print()
+}
+
+cat("\nFull Model\n")
+logit_performance(fm_all)
+
+cat("\nAnti Elite\n")
+logit_performance(fm_antielite)
+
+cat("\nIdentity\n")
+logit_performance(fm_identity)
+
+cat("\nSocial Demographics\n")
+logit_performance(fm_socdem)
+
+cat("\nAttitudes\n")
+logit_performance(fm_attitudes)
+# attitudes seem to be the strongest predictor
 ```
 
 ## Linear SVM
@@ -119,7 +156,24 @@ Run a few models, and evaluate them. Which one has the better predictive perform
 - Train a linear SVM model, check the predictive performance. How does it compare to the logistic regression?
 
 ```{r}
+ctrl <- trainControl(method = "repeatedcv", repeats = 3, number = 5)
 
+mod_svmlinear <- train(fm_all, 
+                       method = "svmLinear",    # see caret website for a model overview: http://topepo.github.io/caret/available-models.html
+                       data = df_train_preped, 
+                       trControl = ctrl,
+                       tuneGrid = data.frame(C = c(0.25, 1, 5, 10)))
+
+mod_svmlinear 
+
+pred_test <- predict(mod_svmlinear, newdata = df_test_preped)
+
+confusionMatrix(df_test_preped$LeaveVote, pred_test,
+                positive = "1",
+                mode = "everything")
+
+
+logit_performance(fm_all)
 ```
 
 
@@ -128,6 +182,32 @@ Run a few models, and evaluate them. Which one has the better predictive perform
 - Train non-linear SVM. How is the performance? Any improvement?
 
 ```{r cache=T}
+mod_svmpoly<- train(fm_all, 
+                       method = "svmPoly",    # see caret website for a model overview: http://topepo.github.io/caret/available-models.html
+                       data = df_train_preped, 
+                       trControl = ctrl)
+
+mod_svmpoly 
+
+pred_test <- predict(mod_svmpoly, newdata = df_test_preped)
+
+confusionMatrix(df_test_preped$LeaveVote, pred_test,
+                positive = "1",
+                mode = "everything")
+
+
+mod_svmradial<- train(fm_all, 
+                       method = "svmRadial",    # see caret website for a model overview: http://topepo.github.io/caret/available-models.html
+                       data = df_train_preped, 
+                       trControl = ctrl)
+
+mod_svmradial 
+
+pred_test <- predict(mod_svmradial, newdata = df_test_preped)
+
+confusionMatrix(df_test_preped$LeaveVote, pred_test,
+                positive = "1",
+                mode = "everything")
 
 
 ```
@@ -140,6 +220,25 @@ Run a few models, and evaluate them. Which one has the better predictive perform
   - Which inupts survived?
 
 ```{r}
+mat_train_x <- df_train_preped %>% select(-LeaveVote) %>% as.matrix() #glmnet requires a matrix as input
+mat_test_x <- df_test_preped %>% select(-LeaveVote) %>% as.matrix() 
+
+model_lasso <- cv.glmnet(mat_train_x, 
+                         df_train_preped$LeaveVote, #output variable
+                         alpha = 1, # 1 for lasso, if alpha = 0 this runs ridge regression
+                         family = "binomial") # family argument is required for glm functions
+
+coef(model_lasso) # glmnet chooses final lambda (and therefore nr of variables) based on increase in RMSE against best model
+plot(model_lasso)
+plot(model_lasso$glmnet.fit, xvar = "lambda")
+plotmo::plot_glmnet(model_lasso$glmnet.fit, xvar = "lambda")
+
+pred_test <- as.integer(predict(model_lasso, newx = mat_test_x) > 0) %>% factor()
+
+confusionMatrix(df_test_preped$LeaveVote, pred_test,
+                positive = "1",
+                mode = "everything")
+
 
 ```
 
